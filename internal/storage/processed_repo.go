@@ -82,7 +82,7 @@ func (r *ProcessedRepo) GetByHash(fileHash string) ([]*domain.ProcessedDoc, erro
 func (r *ProcessedRepo) ListRecent(limit int) ([]*domain.ProcessedDoc, error) {
 	rows, err := r.db.Query(
 		`SELECT id, file_hash, original_path, rule_id, status, error_msg, processed_at
-		 FROM processed_documents ORDER BY processed_at DESC LIMIT ?`,
+		 FROM processed_documents ORDER BY processed_at DESC, id DESC LIMIT ?`,
 		limit,
 	)
 	if err != nil {
