@@ -1,0 +1,9 @@
+bin/
+*.exe
+*.db
+*.db-shm
+*.db-wal
+.idea/
+.vscode/
+*.log
+test/fixtures/generated/

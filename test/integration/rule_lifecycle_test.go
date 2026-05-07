@@ -1,0 +1,1 @@
+package rule_lifecycle_test
