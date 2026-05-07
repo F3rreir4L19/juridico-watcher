@@ -1,5 +1,3 @@
-Aqui está o conteúdo completo. Crie o arquivo `CLAUDE.md` na raiz do projeto e cole tudo abaixo:
-
 ```markdown
 # CLAUDE.md — Juridico Watcher
 
