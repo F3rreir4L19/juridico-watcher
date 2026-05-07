@@ -2,12 +2,15 @@ package testhelpers
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
+	"testing"
+
 	"github.com/F3rreir4L19/juridico-watcher/internal/storage"
+	"github.com/stretchr/testify/require"
 )
 
 // TempDB cria um SQLite em arquivo temporário com migrations aplicadas.
-// O banco é destruído quando o teste termina.
 func TempDB(t *testing.T) *sql.DB {
 	t.Helper()
 	dir := t.TempDir()
@@ -17,13 +20,6 @@ func TempDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { db.Close() })
 	return db
 }
-
-import (
-	"os"
-	"testing"
-
-	"github.com/stretchr/testify/require"
-)
 
 // AssertFileExists falha se o arquivo não existe.
 func AssertFileExists(t *testing.T, path string) {

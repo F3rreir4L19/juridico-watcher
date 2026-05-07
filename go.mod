@@ -4,6 +4,7 @@ go 1.26.2
 
 require (
 	github.com/jung-kurt/gofpdf v1.16.2
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/stretchr/testify v1.11.1
 	modernc.org/sqlite v1.50.0
 )
