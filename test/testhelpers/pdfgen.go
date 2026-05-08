@@ -12,7 +12,8 @@ import (
 // Retorna o caminho absoluto do arquivo criado.
 //
 // O texto é escrito em fonte padrão Arial 12. Quebras de linha (\n) no
-// input geram quebras visuais no PDF e ficam preservadas na extração de texto.
+// input geram quebras visuais no PDF, MAS NÃO são preservadas como '\n'
+// na extração via ledongthuc/pdf — viram espaços. Veja CLAUDE.md §7.4.1.
 func WritePDF(t *testing.T, dir, filename, textContent string) string {
 	t.Helper()
 	path := filepath.Join(dir, filename)

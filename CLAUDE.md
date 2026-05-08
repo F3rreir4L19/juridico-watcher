@@ -441,6 +441,7 @@ make clean             # remove bin/
 | 5 | Watcher fsnotify + Estabilizador de tamanho + Scanner inicial de pasta | ✅ Completo |
 | 6 | Camada de Services: MonitorService, WatchService, RuleService, ScanService + testes | ✅ Completo |
 | 6.5 | Correções pós-revisão: case-insensitive em condições (RN-13), dedup por hash em runtime, interpolator single-pass, fix recursive watch em subpastas novas, mover monitor_service_test para integração, limpeza de dead code | ✅ Completo |
+| 7 | Testes de integração E2E: watch_lifecycle, rule_lifecycle, watch_runtime, scan_service, e2e (cenário procuração completo) | ✅ Completo |
 
 ### 🔲 Pendente
 
@@ -588,6 +589,7 @@ Os arquivos `test/integration/e2e_test.go`, `rule_lifecycle_test.go`, `watch_lif
 |------|---------|
 | 2026-05-07 | Criação inicial do CLAUDE.md, consolidando docs/resumo juridico watcher.txt e decisões das conversas de desenvolvimento. Estado: Sprint 6 completo, Sprints 7-10 pendentes. |
 | 2026-05-08 | Sprint 6.5 — correções pós-revisão completas. Adicionada RN-13 (condições case-insensitive). Pipeline agora consulta dedup antes de processar (RN-11 enforced em runtime, não só no banco). Pipeline usa caminho real retornado de `executeActions` em vez de simulação. Watcher detecta subpastas novas em modo recursivo. Interpolator faz single-pass independente da ordem do map. Teste de MonitorService movido para `test/integration/` por ser end-to-end. Stubs de integração unificados em `package integration_test`. |
+| 2026-05-08 | Sprint 7 — testes de integração E2E completos. Cinco arquivos em `test/integration/` cobrem: ciclo de vida de watch (CRUD + RN-08 ErrWatchInUse), ciclo de vida de regra (CRUD com filhos + cascata + execução real), runtime do watcher (arquivo novo, não-PDF, subpasta recursiva, regra inativa), scan manual (ScanService com pasta única e recursiva), e o teste-âncora E2E que reproduz o cenário do briefing original (pasta digitalizadoras + regra procuração + scan inicial + monitor em runtime). Total: 16 testes de integração novos. |
 
 ---
 
