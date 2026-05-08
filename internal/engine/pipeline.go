@@ -69,6 +69,12 @@ func ProcessPDF(
 	originalPath := filePath
 	currentPath := originalPath
 
+	// movedByPrevious: a partir do momento em que uma regra anterior executou
+	// uma ação `move` com sucesso, todas as regras seguintes são puladas com
+	// status skipped_moved (RN-02). Não depende de checar o filesystem porque
+	// o arquivo real existe no novo lugar — o que importa é a semântica.
+	movedByPrevious := false
+
 	for _, rule := range sorted {
 		if !rule.Active {
 			continue
@@ -77,11 +83,28 @@ func ProcessPDF(
 		// RN-11: deduplicação por hash + rule
 		already, derr := recorder.HasBeenProcessed(fileHash, rule.ID)
 		if derr == nil && already {
-			// já processado por esta regra; pula silenciosamente
 			continue
 		}
 
-		// Verifica se o arquivo ainda existe (pode ter sido movido por regra anterior)
+		// RN-02: regra anterior moveu o arquivo → pula
+		if movedByPrevious {
+			rec := &domain.ProcessedDoc{
+				FileHash:     fileHash,
+				OriginalPath: originalPath,
+				RuleID:       rule.ID,
+				Status:       domain.StatusSkippedMoved,
+			}
+			_ = recorder.Record(rec)
+			results = append(results, PipelineResult{
+				RuleID:   rule.ID,
+				RuleName: rule.Name,
+				Status:   domain.StatusSkippedMoved,
+			})
+			continue
+		}
+
+		// Sanidade: arquivo ainda existe? (caso seja deletado externamente
+		// entre regras, registramos skipped_moved também por consistência)
 		if _, statErr := os.Stat(currentPath); os.IsNotExist(statErr) {
 			rec := &domain.ProcessedDoc{
 				FileHash:     fileHash,
@@ -121,7 +144,7 @@ func ProcessPDF(
 
 		// c) Executa ações sequencialmente; o caminho final retornado já reflete
 		// movimentações e renomeações reais (com colisão tratada).
-		finalPath, execErr := executeActions(currentPath, rule.Actions, vars, baseDir, logger)
+		finalPath, ruleMoved, execErr := executeActions(currentPath, rule.Actions, vars, baseDir, logger)
 		if execErr != nil {
 			rec := &domain.ProcessedDoc{
 				FileHash:     fileHash,
@@ -138,7 +161,12 @@ func ProcessPDF(
 				Status:    domain.StatusFailed,
 				Error:     execErr,
 			})
-			// Ação falhou; mantém currentPath pois execução parou no meio
+			// Se a falha aconteceu depois de já ter movido, sinaliza para
+			// regras seguintes não atuarem em path inválido
+			if ruleMoved {
+				movedByPrevious = true
+				currentPath = finalPath
+			}
 			continue
 		}
 
@@ -157,29 +185,37 @@ func ProcessPDF(
 			Status:    domain.StatusSuccess,
 		})
 
-		// Atualiza currentPath para refletir o estado real após as ações.
 		currentPath = finalPath
+		if ruleMoved {
+			movedByPrevious = true
+		}
 	}
 
 	return results, nil
 }
 
 // executeActions executa cada ação da regra na ordem declarada, interpolando os
-// targets e propagando o caminho atual entre elas. Retorna o caminho final real
-// (após move/rename com colisão tratada) e o erro, se houver.
-func executeActions(originalPath string, actions []domain.Action, vars map[string]string, baseDir string, logger *slog.Logger) (string, error) {
+// targets e propagando o caminho atual entre elas. Retorna:
+//   - finalPath: caminho real após todas as ações (com colisão tratada)
+//   - moved: true se alguma das ações foi um Move executado com sucesso
+//   - err: erro da primeira ação que falhou, se houver
+func executeActions(originalPath string, actions []domain.Action, vars map[string]string, baseDir string, logger *slog.Logger) (string, bool, error) {
 	current := originalPath
+	moved := false
 	for _, action := range actions {
 		target := Interpolate(action.Target, vars, logger)
 		newPath, err := ExecuteAction(action, target, current, baseDir, logger)
 		if err != nil {
-			return current, err
+			return current, moved, err
 		}
 		if newPath != "" {
 			current = newPath
 		}
+		if action.Type == domain.ActionMove {
+			moved = true
+		}
 	}
-	return current, nil
+	return current, moved, nil
 }
 
 func handleNoText(rules []*domain.Rule, hash, path string, recorder ProcessedRecorder, logger *slog.Logger) ([]PipelineResult, error) {

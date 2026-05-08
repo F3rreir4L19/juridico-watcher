@@ -1,1 +1,1 @@
-package e2e_test
+package integration_test

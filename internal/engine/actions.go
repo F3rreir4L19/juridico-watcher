@@ -11,9 +11,16 @@ import (
 	"github.com/F3rreir4L19/juridico-watcher/internal/domain"
 )
 
+// ErrEmptyTarget indica que o target interpolado é vazio. Geralmente significa
+// que uma variável usada no template não foi extraída (RN-10).
+var ErrEmptyTarget = errors.New("alvo da ação é vazio após interpolação")
+
 // ExecuteCreateFolder cria uma pasta. Se target for relativo, é relativo a baseDir.
 // Se a pasta já existir, não é erro.
 func ExecuteCreateFolder(target string, baseDir string) error {
+	if strings.TrimSpace(target) == "" {
+		return ErrEmptyTarget
+	}
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(baseDir, target)
 	}
@@ -24,6 +31,9 @@ func ExecuteCreateFolder(target string, baseDir string) error {
 // Mantém o nome do arquivo. Em caso de colisão, adiciona sufixo numérico (ex: "arquivo (2).pdf").
 // Retorna o novo caminho absoluto do arquivo movido.
 func ExecuteMoveFile(originalPath, targetDir, baseDir string) (string, error) {
+	if strings.TrimSpace(targetDir) == "" {
+		return "", ErrEmptyTarget
+	}
 	if !filepath.IsAbs(targetDir) {
 		targetDir = filepath.Join(baseDir, targetDir)
 	}
@@ -46,6 +56,9 @@ func ExecuteMoveFile(originalPath, targetDir, baseDir string) (string, error) {
 // Colisões são tratadas com sufixo numérico.
 // Retorna o novo caminho absoluto.
 func ExecuteRenameFile(originalPath, newBaseName string) (string, error) {
+	if strings.TrimSpace(newBaseName) == "" {
+		return "", ErrEmptyTarget
+	}
 	dir := filepath.Dir(originalPath)
 	ext := filepath.Ext(originalPath)
 	newName := newBaseName + ext

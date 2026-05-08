@@ -97,6 +97,34 @@ func TestExecuteAction_Rename(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, "renamed.pdf"), newPath)
 }
 
+func TestExecuteCreateFolder_TargetVazio_RetornaErro(t *testing.T) {
+	err := engine.ExecuteCreateFolder("", t.TempDir())
+	require.ErrorIs(t, err, engine.ErrEmptyTarget)
+}
+
+func TestExecuteCreateFolder_TargetSoEspacos_RetornaErro(t *testing.T) {
+	err := engine.ExecuteCreateFolder("   ", t.TempDir())
+	require.ErrorIs(t, err, engine.ErrEmptyTarget)
+}
+
+func TestExecuteMoveFile_TargetVazio_RetornaErro(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "f.pdf")
+	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0644))
+	_, err := engine.ExecuteMoveFile(filePath, "", dir)
+	require.ErrorIs(t, err, engine.ErrEmptyTarget)
+	assert.FileExists(t, filePath) // não foi tocado
+}
+
+func TestExecuteRenameFile_TargetVazio_RetornaErro(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "f.pdf")
+	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0644))
+	_, err := engine.ExecuteRenameFile(filePath, "")
+	require.ErrorIs(t, err, engine.ErrEmptyTarget)
+	assert.FileExists(t, filePath)
+}
+
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil

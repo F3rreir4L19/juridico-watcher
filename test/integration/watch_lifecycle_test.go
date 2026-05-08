@@ -1,1 +1,1 @@
-package watch_lifecycle_test
+package integration_test

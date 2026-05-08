@@ -240,6 +240,11 @@ Um arquivo com o mesmo SHA-256 não é reprocessado pela mesma regra duas vezes.
 ### RN-12: Sem system tray no MVP
 `internal/ui` não implementa system tray. A janela fica aberta enquanto o monitoramento está ativo. System tray é feature de v2.
 
+### RN-13: Condições case-insensitive
+Comparações de condições (`eq`, `neq`, `contains`, `not_contains`) são case-insensitive, consistentes com a busca de delimitadores na RN-06. Implementação em `internal/engine/evaluator.go` faz `strings.ToLower` em ambos os lados antes de comparar.
+
+### RN-14: Target vazio em ações é erro
+Se uma ação (`create_folder`, `move`, `rename`) recebe target interpolado vazio ou só com espaços, retorna `ErrEmptyTarget`. O pipeline marca o documento como `StatusFailed` com a mensagem do erro, dando feedback explícito ao usuário em vez de comportamento silencioso indesejado (mover para a própria pasta, criar pasta com nome vazio, etc).
 ---
 
 ## 6. FLUXO DO MOTOR DE REGRAS (PIPELINE)
@@ -313,6 +318,12 @@ db := testhelpers.TempDB(t)
 // SEMPRE use Eventually para eventos assíncronos — nunca time.Sleep fixo
 require.Eventually(t, func() bool { ... }, 5*time.Second, 200*time.Millisecond)
 ```
+
+### 7.4.1 — Limitações de fixtures PDF
+
+PDFs gerados via `testhelpers.WritePDF` (gofpdf) **não preservam quebras de linha (`\n`)** de forma confiável quando extraídos por `ledongthuc/pdf`. O texto vira uma sequência contínua separada por espaços. Em testes, **não use `\n` como delimitador**. Use texto literal que aparece no documento, como `"Nome: "` e `" Tipo:"`.
+
+Em produção isto não é problema: o usuário escolhe os delimitadores observando o PDF real, e PDFs reais (digitalizadores corporativos) preservam estrutura textual de forma diferente. Esta limitação é específica do par gofpdf+ledongthuc usado para gerar fixtures sintéticas.
 
 ### 7.5 Logs
 ```go
@@ -429,6 +440,7 @@ make clean             # remove bin/
 | 4 | Pipeline completo que orquestra engine (`internal/engine/pipeline.go`) | ✅ Completo |
 | 5 | Watcher fsnotify + Estabilizador de tamanho + Scanner inicial de pasta | ✅ Completo |
 | 6 | Camada de Services: MonitorService, WatchService, RuleService, ScanService + testes | ✅ Completo |
+| 6.5 | Correções pós-revisão: case-insensitive em condições (RN-13), dedup por hash em runtime, interpolator single-pass, fix recursive watch em subpastas novas, mover monitor_service_test para integração, limpeza de dead code | ✅ Completo |
 
 ### 🔲 Pendente
 
@@ -575,6 +587,7 @@ Os arquivos `test/integration/e2e_test.go`, `rule_lifecycle_test.go`, `watch_lif
 | Data | Mudança |
 |------|---------|
 | 2026-05-07 | Criação inicial do CLAUDE.md, consolidando docs/resumo juridico watcher.txt e decisões das conversas de desenvolvimento. Estado: Sprint 6 completo, Sprints 7-10 pendentes. |
+| 2026-05-08 | Sprint 6.5 — correções pós-revisão completas. Adicionada RN-13 (condições case-insensitive). Pipeline agora consulta dedup antes de processar (RN-11 enforced em runtime, não só no banco). Pipeline usa caminho real retornado de `executeActions` em vez de simulação. Watcher detecta subpastas novas em modo recursivo. Interpolator faz single-pass independente da ordem do map. Teste de MonitorService movido para `test/integration/` por ser end-to-end. Stubs de integração unificados em `package integration_test`. |
 
 ---
 

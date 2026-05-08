@@ -26,10 +26,15 @@ func (a *recorderAdapter) Record(doc *domain.ProcessedDoc) error {
 	return a.repo.Record(doc)
 }
 
+// Texto fixture usado por vários testes. Usa delimitadores literais (sem '\n')
+// porque PDFs gerados por gofpdf não preservam newlines de forma confiável
+// na extração via ledongthuc/pdf. Em produção o usuário escolhe os delimitadores
+// observando o PDF real.
+const procuracaoFixtureText = "Nome: Joao Tipo: Procuracao Fim."
+
 func TestPipeline_SucessoSimples(t *testing.T) {
 	dir := t.TempDir()
-	pdfPath := testhelpers.WritePDF(t, dir, "doc.pdf",
-		"Nome: Joao\nTipo: Procuracao")
+	pdfPath := testhelpers.WritePDF(t, dir, "doc.pdf", procuracaoFixtureText)
 
 	db := testhelpers.TempDB(t)
 	wr := storage.NewWatchRepo(db)
@@ -44,7 +49,7 @@ func TestPipeline_SucessoSimples(t *testing.T) {
 		Active:   true,
 		WatchIDs: []int64{w.ID},
 		Extractions: []domain.Extraction{
-			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: "\n"},
+			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: " Tipo:"},
 		},
 		Actions: []domain.Action{
 			{Type: domain.ActionCreateFolder, Target: "{nome}", Order: 1},
@@ -116,7 +121,7 @@ func TestPipeline_PDFSEMTexto(t *testing.T) {
 
 func TestPipeline_MovePulaRegrasSeguintes(t *testing.T) {
 	dir := t.TempDir()
-	pdfPath := testhelpers.WritePDF(t, dir, "doc.pdf", "Nome: Maria\n")
+	pdfPath := testhelpers.WritePDF(t, dir, "doc.pdf", "Nome: Maria Tipo: Procuracao")
 
 	db := testhelpers.TempDB(t)
 	wr := storage.NewWatchRepo(db)
@@ -132,7 +137,7 @@ func TestPipeline_MovePulaRegrasSeguintes(t *testing.T) {
 		Active:   true,
 		WatchIDs: []int64{w.ID},
 		Extractions: []domain.Extraction{
-			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: "\n"},
+			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: " Tipo:"},
 		},
 		Actions: []domain.Action{
 			{Type: domain.ActionMove, Target: "{nome}", Order: 1},
@@ -160,7 +165,7 @@ func TestPipeline_MovePulaRegrasSeguintes(t *testing.T) {
 
 func TestPipeline_DeduplicacaoPorHash(t *testing.T) {
 	dir := t.TempDir()
-	pdfPath := testhelpers.WritePDF(t, dir, "doc.pdf", "Nome: Joao\n")
+	pdfPath := testhelpers.WritePDF(t, dir, "doc.pdf", procuracaoFixtureText)
 
 	db := testhelpers.TempDB(t)
 	wr := storage.NewWatchRepo(db)
@@ -172,7 +177,7 @@ func TestPipeline_DeduplicacaoPorHash(t *testing.T) {
 	rule := &domain.Rule{
 		Name: "r", Priority: 1, Active: true, WatchIDs: []int64{w.ID},
 		Extractions: []domain.Extraction{
-			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: "\n"},
+			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: " Tipo:"},
 		},
 		Actions: []domain.Action{
 			{Type: domain.ActionCreateFolder, Target: "{nome}"},
@@ -195,4 +200,34 @@ func TestPipeline_DeduplicacaoPorHash(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, results) // pulada por dedup
 	assert.NoDirExists(t, filepath.Join(dir, "Joao"))
+}
+
+func TestPipeline_TargetVazio_MarcaFailed(t *testing.T) {
+	dir := t.TempDir()
+	// PDF cuja extração vai retornar variável vazia (delimitadores não batem)
+	pdfPath := testhelpers.WritePDF(t, dir, "doc.pdf", "texto sem campos esperados")
+
+	db := testhelpers.TempDB(t)
+	wr := storage.NewWatchRepo(db)
+	rr := storage.NewRuleRepo(db)
+	pr := storage.NewProcessedRepo(db)
+
+	w := &domain.Watch{Name: "w", Path: dir, Active: true}
+	require.NoError(t, wr.Create(w))
+	rule := &domain.Rule{
+		Name: "r", Priority: 1, Active: true, WatchIDs: []int64{w.ID},
+		Extractions: []domain.Extraction{
+			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: " Tipo:"},
+		},
+		Actions: []domain.Action{
+			{Type: domain.ActionCreateFolder, Target: "{nome}"},
+		},
+	}
+	require.NoError(t, rr.Create(rule))
+
+	results, err := engine.ProcessPDF(pdfPath, []*domain.Rule{rule}, &recorderAdapter{pr}, dir, nil)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, domain.StatusFailed, results[0].Status)
+	assert.ErrorIs(t, results[0].Error, engine.ErrEmptyTarget)
 }

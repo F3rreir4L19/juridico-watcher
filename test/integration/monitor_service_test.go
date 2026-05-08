@@ -31,7 +31,7 @@ func TestMonitorService_EndToEnd(t *testing.T) {
 		Active:   true,
 		WatchIDs: []int64{w.ID},
 		Extractions: []domain.Extraction{
-			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: "\n"},
+			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: " Tipo:"},
 		},
 		Actions: []domain.Action{
 			{Type: domain.ActionCreateFolder, Target: "{nome}", Order: 1},
@@ -46,7 +46,7 @@ func TestMonitorService_EndToEnd(t *testing.T) {
 	defer mon.StopAll()
 
 	// Cria o PDF depois que o monitoramento já iniciou
-	pdfPath := testhelpers.WritePDF(t, monDir, "doc.pdf", "Nome: Joao\nConteudo")
+	pdfPath := testhelpers.WritePDF(t, monDir, "doc.pdf", "Nome: Joao Tipo: Procuracao Fim.")
 
 	// Espera ativa: arquivo deve aparecer na subpasta Joao
 	expectedPath := filepath.Join(monDir, "Joao", "doc.pdf")
