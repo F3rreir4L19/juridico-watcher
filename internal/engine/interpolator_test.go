@@ -13,17 +13,33 @@ func TestInterpolate_SubstituicaoSimples(t *testing.T) {
 	assert.Equal(t, "docs/Joao/procuracao.pdf", result)
 }
 
-func TestInterpolate_VariavelInexistente(t *testing.T) {
+func TestInterpolate_VariavelInexistente_FicaVazia(t *testing.T) {
 	vars := map[string]string{"a": "1"}
-	logger := setupLogger()
-	result := engine.Interpolate("{a}{b}", vars, logger)
+	result := engine.Interpolate("{a}{b}", vars, setupLogger())
 	assert.Equal(t, "1", result)
-	// O logger emitiria um warning, mas não afeta o resultado.
-	// Para verificar se o logger foi chamado, poderíamos usar um buffer,
-	// mas para teste unitário confiamos no comportamento de remover o placeholder.
 }
 
 func TestInterpolate_SemPlaceholders(t *testing.T) {
 	result := engine.Interpolate("texto puro", map[string]string{}, nil)
 	assert.Equal(t, "texto puro", result)
+}
+
+func TestInterpolate_VariavelVazia_NaoConfundeComInexistente(t *testing.T) {
+	vars := map[string]string{"a": ""}
+	result := engine.Interpolate("x{a}y", vars, nil)
+	assert.Equal(t, "xy", result)
+}
+
+func TestInterpolate_ChaveAberturaSemFechamento_TrataComoLiteral(t *testing.T) {
+	result := engine.Interpolate("texto {sem fim", map[string]string{}, nil)
+	assert.Equal(t, "texto {sem fim", result)
+}
+
+func TestInterpolate_OrdemDeterministica(t *testing.T) {
+	// Variáveis com prefixo comum não devem causar problema independente da ordem
+	vars := map[string]string{"a": "X", "ab": "Y"}
+	for i := 0; i < 100; i++ {
+		assert.Equal(t, "Yc", engine.Interpolate("{ab}c", vars, nil))
+		assert.Equal(t, "Xc", engine.Interpolate("{a}c", vars, nil))
+	}
 }

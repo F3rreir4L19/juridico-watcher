@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,7 +19,6 @@ func TestWaitStable_EstabilizaRapidamente(t *testing.T) {
 	path := filepath.Join(dir, "f.pdf")
 	require.NoError(t, os.WriteFile(path, []byte("hello"), 0644))
 
-	// O arquivo foi escrito e não está sendo alterado
 	err := watcher.WaitStable(path, 50*time.Millisecond, 2, 1*time.Second)
 	assert.NoError(t, err)
 }
@@ -28,15 +28,31 @@ func TestWaitStable_Timeout(t *testing.T) {
 	path := filepath.Join(dir, "grow.pdf")
 	require.NoError(t, os.WriteFile(path, []byte("a"), 0644))
 
-	// Simula arquivo crescendo em background
+	// Garante que a goroutine de crescimento esteja viva durante toda a janela
+	// do teste, sem usar sleeps frágeis.
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		for i := 0; i < 10; i++ {
-			time.Sleep(100 * time.Millisecond)
-			_ = os.WriteFile(path, []byte(string(make([]byte, i*10))), 0644)
+		defer wg.Done()
+		size := 1
+		ticker := time.NewTicker(30 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				size++
+				_ = os.WriteFile(path, make([]byte, size*10), 0644)
+			}
 		}
 	}()
 
 	err := watcher.WaitStable(path, 50*time.Millisecond, 3, 300*time.Millisecond)
+	close(stop)
+	wg.Wait()
+
 	assert.ErrorIs(t, err, watcher.ErrStabilizationTimeout)
 }
 

@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -28,21 +29,20 @@ func (a *recorderAdapter) Record(doc *domain.ProcessedDoc) error {
 func TestPipeline_SucessoSimples(t *testing.T) {
 	dir := t.TempDir()
 	pdfPath := testhelpers.WritePDF(t, dir, "doc.pdf",
-		"Nome: Joao\nTipo: Procuração")
+		"Nome: Joao\nTipo: Procuracao")
 
 	db := testhelpers.TempDB(t)
 	wr := storage.NewWatchRepo(db)
 	rr := storage.NewRuleRepo(db)
 	pr := storage.NewProcessedRepo(db)
 
-	// Cria watch e regra
 	w := &domain.Watch{Name: "w", Path: dir, Active: true}
 	require.NoError(t, wr.Create(w))
 	rule := &domain.Rule{
-		Name:      "Procuração",
-		Priority:  1,
-		Active:    true,
-		WatchIDs:  []int64{w.ID},
+		Name:     "Procuracao",
+		Priority: 1,
+		Active:   true,
+		WatchIDs: []int64{w.ID},
 		Extractions: []domain.Extraction{
 			{VariableName: "nome", StartDelim: "Nome: ", EndDelim: "\n"},
 		},
@@ -59,7 +59,6 @@ func TestPipeline_SucessoSimples(t *testing.T) {
 	require.Len(t, results, 1)
 	assert.Equal(t, domain.StatusSuccess, results[0].Status)
 
-	// Verifica que a pasta foi criada e o arquivo movido
 	assert.DirExists(t, filepath.Join(dir, "Joao"))
 	assert.NoFileExists(t, pdfPath)
 	assert.FileExists(t, filepath.Join(dir, "Joao", "doc.pdf"))
@@ -105,7 +104,7 @@ func TestPipeline_PDFSEMTexto(t *testing.T) {
 	w := &domain.Watch{Name: "w", Path: dir, Active: true}
 	require.NoError(t, wr.Create(w))
 	rule := &domain.Rule{
-		Name:     "R1", Priority: 1, Active: true, WatchIDs: []int64{w.ID},
+		Name: "R1", Priority: 1, Active: true, WatchIDs: []int64{w.ID},
 	}
 	require.NoError(t, rr.Create(rule))
 

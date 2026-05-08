@@ -2,7 +2,6 @@ package storage
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -102,7 +101,3 @@ func (r *ProcessedRepo) ListRecent(limit int) ([]*domain.ProcessedDoc, error) {
 	}
 	return out, rows.Err()
 }
-
-// suppress unused warning
-var _ = errors.New
-var _ = sql.ErrNoRows

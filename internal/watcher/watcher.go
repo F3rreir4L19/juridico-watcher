@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,14 +13,14 @@ import (
 )
 
 type watcherImpl struct {
-	mu       sync.Mutex
-	watcher  *fsnotify.Watcher
-	dirs     map[string]struct{} // diretórios já adicionados (evitar duplicados)
-	events   chan Event
-	errors   chan error
-	done     chan struct{}
+	mu        sync.Mutex
+	watcher   *fsnotify.Watcher
+	dirs      map[string]struct{} // diretórios já adicionados (evitar duplicados)
+	events    chan Event
+	errors    chan error
+	done      chan struct{}
 	recursive bool
-	logger   *slog.Logger
+	logger    *slog.Logger
 }
 
 // NewFileWatcher cria um observador que monitora as pastas fornecidas.
@@ -41,7 +42,6 @@ func NewFileWatcher(paths []string, recursive bool, logger *slog.Logger) (FileWa
 		recursive: recursive,
 		logger:    logger,
 	}
-	// Adiciona caminhos iniciais
 	for _, p := range paths {
 		abs, err := filepath.Abs(p)
 		if err != nil {
@@ -80,7 +80,7 @@ func (w *watcherImpl) addDir(dir string) error {
 	defer w.mu.Unlock()
 
 	if _, ok := w.dirs[dir]; ok {
-		return nil // já monitorado
+		return nil
 	}
 	if err := w.watcher.Add(dir); err != nil {
 		return fmt.Errorf("adicionar diretório %q: %w", dir, err)
@@ -95,7 +95,33 @@ func (w *watcherImpl) addDir(dir string) error {
 		for _, entry := range entries {
 			if entry.IsDir() {
 				sub := filepath.Join(dir, entry.Name())
-				_ = w.addDir(sub) // erro não interrompe o loop
+				_ = w.addDirLocked(sub)
+			}
+		}
+	}
+	return nil
+}
+
+// addDirLocked é a versão de addDir que assume que o lock já está adquirido.
+// Usada na recursão interna de addDir para não deadlocar.
+func (w *watcherImpl) addDirLocked(dir string) error {
+	if _, ok := w.dirs[dir]; ok {
+		return nil
+	}
+	if err := w.watcher.Add(dir); err != nil {
+		return fmt.Errorf("adicionar diretório %q: %w", dir, err)
+	}
+	w.dirs[dir] = struct{}{}
+
+	if w.recursive {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return fmt.Errorf("ler diretório %q: %w", dir, err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				sub := filepath.Join(dir, entry.Name())
+				_ = w.addDirLocked(sub)
 			}
 		}
 	}
@@ -122,23 +148,30 @@ func (w *watcherImpl) loop() {
 }
 
 func (w *watcherImpl) handleEvent(raw fsnotify.Event) {
-	// Só interessa criação de arquivos PDF
+	// Apenas criação ou rename interessam
 	if raw.Op&fsnotify.Create == 0 && raw.Op&fsnotify.Rename == 0 {
 		return
 	}
 	path := filepath.Clean(raw.Name)
-	if filepath.Ext(path) != ".pdf" {
-		return
-	}
-	// Ignorar diretórios
+
 	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
+	if err != nil {
+		// Arquivo foi removido entre o evento e o stat — ignora silenciosamente
 		return
 	}
-	// Se for uma subpasta nova (criada após início) e estivermos em modo recursivo,
-	// adicionamos a nova pasta ao watcher.
-	if w.recursive && raw.Op&fsnotify.Create != 0 && info.IsDir() {
-		_ = w.addDir(path)
+
+	// Diretório novo: se estamos em modo recursivo, adiciona ao observador
+	if info.IsDir() {
+		if w.recursive && raw.Op&fsnotify.Create != 0 {
+			if err := w.addDir(path); err != nil {
+				w.logger.Warn("falha ao adicionar subpasta nova", "path", path, "err", err)
+			}
+		}
+		return
+	}
+
+	// Arquivo: só interessam .pdf
+	if !strings.EqualFold(filepath.Ext(path), ".pdf") {
 		return
 	}
 

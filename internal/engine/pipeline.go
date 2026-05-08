@@ -8,11 +8,10 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"sort"
 
-	pdfpkg "github.com/F3rreir4L19/juridico-watcher/internal/pdf"
 	"github.com/F3rreir4L19/juridico-watcher/internal/domain"
+	pdfpkg "github.com/F3rreir4L19/juridico-watcher/internal/pdf"
 )
 
 // PipelineResult contém o resumo do processamento após a execução do pipeline.
@@ -25,8 +24,8 @@ type PipelineResult struct {
 }
 
 // ProcessPDF roda o pipeline completo em um arquivo PDF já estabilizado.
-// Retorna nil mesmo que nenhuma regra gere erro; os resultados individuais
-// são registrados via recorder e também retornados para análise.
+// Os resultados individuais são registrados via recorder e também retornados
+// para análise. Regras já processadas para o mesmo hash são puladas (RN-11).
 //
 // O parâmetro baseDir é o diretório raiz para ações com caminhos relativos
 // (geralmente a pasta monitorada onde o arquivo foi encontrado).
@@ -57,15 +56,15 @@ func ProcessPDF(
 	// 3. Extrair texto do PDF (caro, faz uma única vez)
 	text, err := pdfpkg.ExtractText(filePath)
 	if err != nil {
-		// Se não tem texto, marcamos como no_text para todas as regras aplicáveis
+		// Se não tem texto, marca como no_text para todas as regras aplicáveis
 		if errors.Is(err, domain.ErrNoText) {
 			return handleNoText(sorted, fileHash, filePath, recorder, logger)
 		}
-		// Erro real (ex.: arquivo corrompido) → falha para todas as regras
-		return handleFatal(filePath, err, logger)
+		// Erro real (ex.: arquivo corrompido) → falha global
+		return nil, fmt.Errorf("erro crítico em %s: %w", filePath, err)
 	}
 
-	// 4. Para cada regra (ordenada) que ainda possa ser processada
+	// 4. Para cada regra (ordenada)
 	var results []PipelineResult
 	originalPath := filePath
 	currentPath := originalPath
@@ -75,16 +74,15 @@ func ProcessPDF(
 			continue
 		}
 
-    	// RN-11: deduplicação por hash + rule
-    	already, err := hasBeenProcessedSafe(recorder, fileHash, rule.ID)
-    	if err == nil && already {
-        	// já processado por esta regra; pula silenciosamente
-        	continue
-    	}
+		// RN-11: deduplicação por hash + rule
+		already, derr := recorder.HasBeenProcessed(fileHash, rule.ID)
+		if derr == nil && already {
+			// já processado por esta regra; pula silenciosamente
+			continue
+		}
 
 		// Verifica se o arquivo ainda existe (pode ter sido movido por regra anterior)
 		if _, statErr := os.Stat(currentPath); os.IsNotExist(statErr) {
-			// Registra como skipped_moved para esta regra
 			rec := &domain.ProcessedDoc{
 				FileHash:     fileHash,
 				OriginalPath: originalPath,
@@ -121,8 +119,9 @@ func ProcessPDF(
 			continue
 		}
 
-		// c) Executa ações sequencialmente
-		execErr := executeActions(currentPath, rule.Actions, vars, baseDir, logger)
+		// c) Executa ações sequencialmente; o caminho final retornado já reflete
+		// movimentações e renomeações reais (com colisão tratada).
+		finalPath, execErr := executeActions(currentPath, rule.Actions, vars, baseDir, logger)
 		if execErr != nil {
 			rec := &domain.ProcessedDoc{
 				FileHash:     fileHash,
@@ -139,7 +138,7 @@ func ProcessPDF(
 				Status:    domain.StatusFailed,
 				Error:     execErr,
 			})
-			// Uma ação falhou; não atualiza currentPath, regra seguinte ainda verá o original
+			// Ação falhou; mantém currentPath pois execução parou no meio
 			continue
 		}
 
@@ -158,15 +157,16 @@ func ProcessPDF(
 			Status:    domain.StatusSuccess,
 		})
 
-		// Se alguma ação alterou o caminho (move/rename), atualiza currentPath
-		if newPath, changed := pathAfterActions(currentPath, rule.Actions, vars, baseDir); changed {
-			currentPath = newPath
-		}
+		// Atualiza currentPath para refletir o estado real após as ações.
+		currentPath = finalPath
 	}
 
 	return results, nil
 }
 
+// executeActions executa cada ação da regra na ordem declarada, interpolando os
+// targets e propagando o caminho atual entre elas. Retorna o caminho final real
+// (após move/rename com colisão tratada) e o erro, se houver.
 func executeActions(originalPath string, actions []domain.Action, vars map[string]string, baseDir string, logger *slog.Logger) (string, error) {
 	current := originalPath
 	for _, action := range actions {
@@ -180,42 +180,17 @@ func executeActions(originalPath string, actions []domain.Action, vars map[strin
 		}
 	}
 	return current, nil
-	
-}
-
-// pathAfterActions retorna o caminho final após as ações, se alguma modificou.
-func pathAfterActions(originalPath string, actions []domain.Action, vars map[string]string, baseDir string) (string, bool) {
-	curr := originalPath
-	changed := false
-	for _, action := range actions {
-		target := Interpolate(action.Target, vars, nil)
-		switch action.Type {
-		case domain.ActionMove:
-			if !filepath.IsAbs(target) {
-				target = filepath.Join(baseDir, target)
-			}
-			dest := filepath.Join(target, filepath.Base(curr))
-			curr = avoidCollisionDry(dest)
-			changed = true
-		case domain.ActionRename:
-			dir := filepath.Dir(curr)
-			ext := filepath.Ext(curr)
-			newName := target + ext
-			curr = filepath.Join(dir, newName)
-			changed = true
-		}
-	}
-	return curr, changed
-}
-
-func avoidCollisionDry(path string) string {
-	return path
 }
 
 func handleNoText(rules []*domain.Rule, hash, path string, recorder ProcessedRecorder, logger *slog.Logger) ([]PipelineResult, error) {
 	var results []PipelineResult
 	for _, rule := range rules {
 		if !rule.Active {
+			continue
+		}
+		// Mesmo no_text passa por dedup: não registra duas vezes
+		already, derr := recorder.HasBeenProcessed(hash, rule.ID)
+		if derr == nil && already {
 			continue
 		}
 		rec := &domain.ProcessedDoc{
@@ -234,10 +209,6 @@ func handleNoText(rules []*domain.Rule, hash, path string, recorder ProcessedRec
 	return results, nil
 }
 
-func handleFatal(filePath string, err error, logger *slog.Logger) ([]PipelineResult, error) {
-	return nil, fmt.Errorf("erro crítico em %s: %w", filePath, err)
-}
-
 func hashFile(filePath string) (string, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -249,8 +220,4 @@ func hashFile(filePath string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func hasBeenProcessedSafe(recorder ProcessedRecorder, hash string, ruleID int64) (bool, error) {
-	return recorder.HasBeenProcessed(hash, ruleID)
 }
