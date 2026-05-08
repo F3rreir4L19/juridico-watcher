@@ -8,7 +8,8 @@ import (
 )
 
 // EvaluateConditions retorna true se todas as condições forem satisfeitas (AND).
-// Se o mapa de variáveis não contiver a chave da condição, a condição falha.
+// Comparações são case-insensitive, consistentes com a RN-06 dos delimitadores.
+// Se a variável referenciada na condição não foi extraída, a condição falha.
 func EvaluateConditions(conditions []domain.Condition, vars map[string]string, logger *slog.Logger) bool {
 	for _, cond := range conditions {
 		actual, ok := vars[cond.VariableName]
@@ -18,7 +19,6 @@ func EvaluateConditions(conditions []domain.Condition, vars map[string]string, l
 			}
 			return false
 		}
-
 		if !evaluateOne(cond.Operator, actual, cond.Value) {
 			return false
 		}
@@ -27,17 +27,18 @@ func EvaluateConditions(conditions []domain.Condition, vars map[string]string, l
 }
 
 func evaluateOne(op domain.Operator, actual, expected string) bool {
+	a := strings.ToLower(actual)
+	e := strings.ToLower(expected)
 	switch op {
 	case domain.OpEquals:
-		return strings.EqualFold(actual, expected) // case-insensitive por simetria? Decisão de design: eq é case-sensitive? O spec não especifica case para condições, mas para delimitadores foi case-insensitive. Para consistência, manteremos case-sensitive em eq/neq/contains, a menos que o usuário queira. As decisões não definem. Vou manter case-sensitive, pois é o padrão e o usuário tem controle sobre o valor. Se quisermos, poderíamos tornar configurável, mas v1 é simples.
+		return a == e
 	case domain.OpNotEquals:
-		return actual != expected
+		return a != e
 	case domain.OpContains:
-		return strings.Contains(actual, expected)
+		return strings.Contains(a, e)
 	case domain.OpNotContain:
-		return !strings.Contains(actual, expected)
+		return !strings.Contains(a, e)
 	default:
-		// operador desconhecido → falha
 		return false
 	}
 }

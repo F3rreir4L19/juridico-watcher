@@ -75,6 +75,13 @@ func ProcessPDF(
 			continue
 		}
 
+    	// RN-11: deduplicação por hash + rule
+    	already, err := hasBeenProcessedSafe(recorder, fileHash, rule.ID)
+    	if err == nil && already {
+        	// já processado por esta regra; pula silenciosamente
+        	continue
+    	}
+
 		// Verifica se o arquivo ainda existe (pode ter sido movido por regra anterior)
 		if _, statErr := os.Stat(currentPath); os.IsNotExist(statErr) {
 			// Registra como skipped_moved para esta regra
@@ -160,20 +167,20 @@ func ProcessPDF(
 	return results, nil
 }
 
-// executeActions executa cada ação da regra, interpolando os targets.
-func executeActions(originalPath string, actions []domain.Action, vars map[string]string, baseDir string, logger *slog.Logger) error {
+func executeActions(originalPath string, actions []domain.Action, vars map[string]string, baseDir string, logger *slog.Logger) (string, error) {
 	current := originalPath
 	for _, action := range actions {
 		target := Interpolate(action.Target, vars, logger)
 		newPath, err := ExecuteAction(action, target, current, baseDir, logger)
 		if err != nil {
-			return err
+			return current, err
 		}
 		if newPath != "" {
 			current = newPath
 		}
 	}
-	return nil
+	return current, nil
+	
 }
 
 // pathAfterActions retorna o caminho final após as ações, se alguma modificou.
@@ -242,4 +249,8 @@ func hashFile(filePath string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func hasBeenProcessedSafe(recorder ProcessedRecorder, hash string, ruleID int64) (bool, error) {
+	return recorder.HasBeenProcessed(hash, ruleID)
 }

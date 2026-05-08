@@ -190,3 +190,7 @@ type processedRecorder struct {
 func (r *processedRecorder) Record(doc *domain.ProcessedDoc) error {
 	return r.repo.Record(doc)
 }
+
+func (r *processedRecorder) HasBeenProcessed(hash string, ruleID int64) (bool, error) {
+	return r.repo.HasBeenProcessed(hash, ruleID)
+}

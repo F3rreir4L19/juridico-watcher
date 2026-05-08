@@ -53,3 +53,19 @@ func TestEvaluateConditions_Operators(t *testing.T) {
 		{VariableName: "x", Operator: domain.OpNotContain, Value: "a"},
 	}, vars, nil))
 }
+
+func TestEvaluateConditions_CaseInsensitive(t *testing.T) {
+	vars := map[string]string{"tipo": "Procuração"}
+	// eq deve bater independente do case
+	assert.True(t, engine.EvaluateConditions([]domain.Condition{
+		{VariableName: "tipo", Operator: domain.OpEquals, Value: "procuração"},
+	}, vars, nil))
+	// neq deve ser false (porque eq é true)
+	assert.False(t, engine.EvaluateConditions([]domain.Condition{
+		{VariableName: "tipo", Operator: domain.OpNotEquals, Value: "procuração"},
+	}, vars, nil))
+	// contains deve achar
+	assert.True(t, engine.EvaluateConditions([]domain.Condition{
+		{VariableName: "tipo", Operator: domain.OpContains, Value: "PROCURA"},
+	}, vars, nil))
+}
