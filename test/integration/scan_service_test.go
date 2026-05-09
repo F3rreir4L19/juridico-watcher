@@ -125,8 +125,6 @@ func TestScanService_Recursivo_VarreSubpastas(t *testing.T) {
 	assert.Len(t, all, 2)
 }
 
-// TestScanService_ScanRule_AplicaApenasARegraSelecionada valida que
-// ScanRule processa só a regra alvo, ignorando outras associadas à pasta.
 func TestScanService_ScanRule_AplicaApenasARegraSelecionada(t *testing.T) {
 	db := testhelpers.TempDB(t)
 	monDir := t.TempDir()
@@ -138,7 +136,6 @@ func TestScanService_ScanRule_AplicaApenasARegraSelecionada(t *testing.T) {
 	w := &domain.Watch{Name: "w", Path: monDir, Active: true}
 	require.NoError(t, wsvc.Create(w))
 
-	// Duas regras na mesma pasta
 	regraA := &domain.Rule{
 		Name: "RegraA", Priority: 1, Active: true, WatchIDs: []int64{w.ID},
 		Extractions: []domain.Extraction{
@@ -168,17 +165,14 @@ func TestScanService_ScanRule_AplicaApenasARegraSelecionada(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
 
-	// Só a pasta A_Maria foi criada — RegraB não rodou
 	assert.DirExists(t, filepath.Join(monDir, "A_Maria"))
 	assert.NoDirExists(t, filepath.Join(monDir, "B_Maria"))
 
-	// Histórico tem 1 entrada (só RegraA processou)
 	all, _ := pr.ListRecent(10)
 	assert.Len(t, all, 1)
 	assert.Equal(t, regraA.ID, all[0].RuleID)
 }
 
-// TestScanService_ScanRule_RegraInativa_RetornaErrInactive
 func TestScanService_ScanRule_RegraInativa_RetornaErrInactive(t *testing.T) {
 	db := testhelpers.TempDB(t)
 	monDir := t.TempDir()
@@ -206,7 +200,6 @@ func TestScanService_ScanRule_RegraInativa_RetornaErrInactive(t *testing.T) {
 	assert.True(t, errors.Is(err, service.ErrInactive))
 }
 
-// TestScanService_ScanAll_ProcessaTodasPastasAtivas
 func TestScanService_ScanAll_ProcessaTodasPastasAtivas(t *testing.T) {
 	db := testhelpers.TempDB(t)
 	dirA := t.TempDir()
@@ -236,7 +229,6 @@ func TestScanService_ScanAll_ProcessaTodasPastasAtivas(t *testing.T) {
 
 	testhelpers.WritePDF(t, dirA, "a.pdf", "PROCURACAO Outorgante: Ana RG 1")
 	testhelpers.WritePDF(t, dirB, "b.pdf", "PROCURACAO Outorgante: Bruno RG 2")
-	// PDF na pasta inativa NÃO deve ser processado
 	testhelpers.WritePDF(t, dirInativo, "x.pdf", "PROCURACAO Outorgante: X RG 3")
 
 	scan := service.NewScanService(db, nil)

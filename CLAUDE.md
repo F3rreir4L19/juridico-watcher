@@ -444,12 +444,13 @@ make clean             # remove bin/
 | 7 | Testes de integração E2E: watch_lifecycle, rule_lifecycle, watch_runtime, scan_service, e2e (cenário procuração completo) | ✅ Completo |
 | 8 | UI Fyne — janela principal, aba Monitorar funcional (CRUD com seleção, validação, picker de pasta), MonitorService no startup, placeholder honesto na aba Regras | ✅ Completo |
 | 9 | UI Fyne — aba Regras completa: dialog modal único com acordeon de extrações/condições/ações, sub-dialogs para cada item composto, validação em camadas (UI + service), avisos quando variável removida está em uso | ✅ Completo |
+| 10 | UI Fyne — finalização: barra de topo com "Atualizar tudo", botão "Atualizar regra" por linha, aba Histórico com filtros, badge "(N falhas)" no título, README com instruções de build/run | ✅ Completo |
 
 ### 🔲 Pendente
 
 | Sprint | Descrição | Prioridade |
 |--------|-----------|------------|
-| 10 | **UI — Finalização:** botão Atualizar, histórico, polimento, build cross-platform | Alta |
+
 
 ### Evidência de estado (último `make test-unit` confirmado):
 ```
@@ -482,6 +483,8 @@ O MVP **não precisa ter:**
 - OCR (fora do escopo do projeto)
 - Logs persistidos em arquivo (v2)
 - Auto-update (v2)
+
+**Status:** MVP completo em 2026-05-09 ✅
 
 ---
 
@@ -556,6 +559,18 @@ O MVP **não precisa ter:**
 
 ### D-14: Feature "caminho entre aspas vira watch automático" adiada para v2
 **Razão:** No briefing original, o usuário podia colar texto com caminhos entre aspas e o sistema criava watches automaticamente (path01, path02). Para o MVP, adicionar pasta uma a uma via picker é suficiente e mais didático para usuário leigo. A complexidade da feature (parser robusto, naming sequencial, edge cases de overlap entre paths) não se justifica no escopo atual. Registrada como feature explícita de v2.
+
+### D-15: Aba "Histórico" dedicada como terceira aba
+**Razão:** Coerência com o padrão de duas abas existente. Espaço para histórico longo (até 100 itens) com filtros por regra e status. Dimensionada para uso ocasional do tipo "checar o que aconteceu". Indicador "(N falhas)" no título destaca falhas novas sem forçar o usuário a abrir a aba constantemente.
+
+### D-15.1: "Última visita" marcada ao SAIR da aba, não ao entrar
+**Razão:** Se o badge zera no clique de entrada, o usuário perde a informação de "essas eu ainda não vi" assim que abre a aba. Marcar ao sair (via tabs.OnChanged) dá tempo de olhar as falhas com calma; só quando ele troca de aba é que consideramos "viu". Persistido em app_state via AppStateRepo.
+
+### D-16: Botão "Atualizar" em dois lugares
+**Razão:** "Atualizar tudo" no topo cobre o caso "configurei tudo, processar agora os PDFs já presentes". "Atualizar regra" por linha cobre "criei uma regra nova, quero aplicar só ela aos PDFs existentes sem reprocessar pelas outras". ScanService.ScanRule passa lista contendo apenas a regra alvo, ignorando as outras associadas à mesma pasta. Dedup por hash+rule_id (RN-11) ainda protege contra reprocessamento desnecessário.
+
+### D-17: Build cross-platform via documentação, não cross-compile automatizado
+**Razão:** Cross-compile de Fyne (CGO + OpenGL) entre Windows/Linux é desproporcionalmente complicado para o MVP. Build nativo em cada SO funciona com requisitos modestos (Go + toolchain C local). README documenta requisitos e comandos. CI/CD com runners nativos fica para v2.
 ---
 
 ## 14. GUIA PARA MODELOS DE IA TRABALHANDO NESTE PROJETO
@@ -614,6 +629,7 @@ Os arquivos `test/integration/e2e_test.go`, `rule_lifecycle_test.go`, `watch_lif
 | 2026-05-08 | Sprint 7 — testes de integração E2E completos. Cinco arquivos em `test/integration/` cobrem: ciclo de vida de watch (CRUD + RN-08 ErrWatchInUse), ciclo de vida de regra (CRUD com filhos + cascata + execução real), runtime do watcher (arquivo novo, não-PDF, subpasta recursiva, regra inativa), scan manual (ScanService com pasta única e recursiva), e o teste-âncora E2E que reproduz o cenário do briefing original (pasta digitalizadoras + regra procuração + scan inicial + monitor em runtime). Total: 16 testes de integração novos. |
 | 2026-05-09 | Sprint 8 — UI Fyne aba Monitorar completa. Janela principal 1024×720 abre com duas abas. Aba "Monitorar" tem CRUD completo de pastas com seleção explícita (botões habilitam/desabilitam conforme seleção), picker nativo de pasta, validação de existência do diretório, mensagens de erro amigáveis (HumanizeError), confirmação de remoção, empty state. MonitorService inicia automaticamente ao abrir e reinicia após qualquer mudança. Aba "Regras" tem placeholder explícito remetendo à Sprint 9. Decisões D-07 a D-11 registradas. |
 | 2026-05-09 | Sprint 9 — UI Fyne aba Regras completa. Dialog modal único (D-12) com metadados (nome, prioridade, ativa, pastas em grade de checkboxes) + acordeon com 3 seções: Extrações, Condições, Ações. Sub-dialogs dedicados para cada item composto (D-13), com helpers de operador/tipo de ação em português. Cache local + commit explícito (D-10): nada vai pro banco até "Salvar" no dialog principal. Validação em camadas: sub-dialogs validam campos próprios, commit() valida UX (>= 1 watch, >= 1 ação), service.Create/Update valida domínio (nome, watches). Aviso quando remover extração em uso por condição/ação. MonitorService reinicia após qualquer mudança em regras. Feature "caminho entre aspas" formalmente adiada para v2 (D-14). |
+| 2026-05-09 | Sprint 10 — MVP fechado. Adicionada barra de topo com "Atualizar tudo" (ScanService.ScanAll, novo). Botão "Atualizar regra" por linha na aba Regras (ScanService.ScanRule, novo). Aba Histórico nova: lista com TwoLineItem colorido (vermelho=falha, laranja=sem texto), filtros locais por regra e por status, botão refresh. Indicador "(N falhas)" no título da aba, com persistência via app_state.last_visit (D-15.1). Migration 002_app_state.sql adicionada. README criado com requisitos por SO, comandos de build/run, fluxo de uso. ScanWatch agora retorna (count, error). Decisões D-15 a D-17 registradas. |
 
 ---
 

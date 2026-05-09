@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 
 	"fyne.io/fyne/v2"
@@ -16,14 +17,13 @@ import (
 )
 
 // rulesTab encapsula o estado da aba Regras.
-// Segue o mesmo padrão de watchesTab (D-10): cache local + reload explícito,
-// seleção via OnSelected/OnUnselected, botões habilitam/desabilitam conforme
-// seleção (D-08).
 type rulesTab struct {
 	parent         fyne.Window
 	ruleSvc        *service.RuleService
 	watchSvc       *service.WatchService
-	onRulesChanged func() // callback para o App reiniciar o MonitorService
+	scanSvc        *service.ScanService
+	onRulesChanged func()       // reinicia o monitor service após CRUD
+	onScanDone     func(int)    // chamado após scan de regra (recebe count)
 
 	cache    []*domain.Rule
 	selected int // -1 quando nada selecionado
@@ -32,27 +32,28 @@ type rulesTab struct {
 
 	editBtn   *widget.Button
 	toggleBtn *widget.Button
+	scanBtn   *widget.Button
 	removeBtn *widget.Button
 
 	root fyne.CanvasObject
 }
 
 // newRulesTab constrói a aba Regras.
-//
-// onRulesChanged é chamado depois de qualquer Create/Update/Delete bem-sucedido,
-// para que o App reinicie o MonitorService (regras alteradas afetam quais
-// arquivos são processados).
 func newRulesTab(
 	parent fyne.Window,
 	ruleSvc *service.RuleService,
 	watchSvc *service.WatchService,
+	scanSvc *service.ScanService,
 	onRulesChanged func(),
+	onScanDone func(int),
 ) *rulesTab {
 	t := &rulesTab{
 		parent:         parent,
 		ruleSvc:        ruleSvc,
 		watchSvc:       watchSvc,
+		scanSvc:        scanSvc,
 		onRulesChanged: onRulesChanged,
+		onScanDone:     onScanDone,
 		selected:       -1,
 	}
 	t.build()
@@ -60,7 +61,6 @@ func newRulesTab(
 	return t
 }
 
-// Root devolve o CanvasObject pra ser usado em container.NewTabItem.
 func (t *rulesTab) Root() fyne.CanvasObject {
 	return t.root
 }
@@ -89,7 +89,6 @@ func (t *rulesTab) build() {
 		t.refreshButtons()
 	}
 
-	// --- Botões ---
 	addBtn := widget.NewButtonWithIcon("Adicionar regra", theme.ContentAddIcon(), func() {
 		t.openCreate()
 	})
@@ -100,6 +99,9 @@ func (t *rulesTab) build() {
 	})
 	t.toggleBtn = widget.NewButtonWithIcon("Ativar/Desativar", theme.MediaReplayIcon(), func() {
 		t.toggleSelected()
+	})
+	t.scanBtn = widget.NewButtonWithIcon("Atualizar regra", theme.ViewRefreshIcon(), func() {
+		t.scanSelected()
 	})
 	t.removeBtn = widget.NewButtonWithIcon("Remover", theme.DeleteIcon(), func() {
 		t.removeSelected()
@@ -114,7 +116,7 @@ func (t *rulesTab) build() {
 	t.emptyMsg.Hide()
 
 	toolbar := container.New(layout.NewHBoxLayout(),
-		addBtn, t.editBtn, t.toggleBtn, t.removeBtn,
+		addBtn, t.editBtn, t.toggleBtn, t.scanBtn, t.removeBtn,
 	)
 
 	listArea := container.NewStack(t.list, t.emptyMsg)
@@ -126,7 +128,6 @@ func (t *rulesTab) build() {
 	)
 }
 
-// reload busca regras e watches frescos do service e atualiza UI.
 func (t *rulesTab) reload() {
 	rules, err := t.ruleSvc.List()
 	if err != nil {
@@ -134,7 +135,6 @@ func (t *rulesTab) reload() {
 			uic.HumanizeError(err)), t.parent)
 		t.cache = nil
 	} else {
-		// Para a UI, regras com filhos completos. List() já carrega filhos.
 		t.cache = rules
 	}
 	t.selected = -1
@@ -144,7 +144,6 @@ func (t *rulesTab) reload() {
 	t.toggleEmptyState()
 }
 
-// afterChange é o callback usado pelo dialog após salvar com sucesso.
 func (t *rulesTab) afterChange() {
 	t.reload()
 	if t.onRulesChanged != nil {
@@ -152,7 +151,6 @@ func (t *rulesTab) afterChange() {
 	}
 }
 
-// openCreate carrega a lista de watches e abre o dialog em modo "Adicionar".
 func (t *rulesTab) openCreate() {
 	watches, err := t.watchSvc.List()
 	if err != nil {
@@ -163,9 +161,6 @@ func (t *rulesTab) openCreate() {
 	showRuleDialog(t.parent, t.ruleSvc, watches, nil, t.afterChange)
 }
 
-// openEdit carrega watches e abre o dialog em modo "Editar".
-// Também recarrega a regra do banco para garantir que filhos vieram completos
-// (List() já carrega filhos, mas fazer GetByID é defesa explícita).
 func (t *rulesTab) openEdit() {
 	r := t.currentSelection()
 	if r == nil {
@@ -186,7 +181,6 @@ func (t *rulesTab) openEdit() {
 	showRuleDialog(t.parent, t.ruleSvc, watches, fresh, t.afterChange)
 }
 
-// currentSelection retorna a regra selecionada ou nil.
 func (t *rulesTab) currentSelection() *domain.Rule {
 	if t.selected < 0 || t.selected >= len(t.cache) {
 		return nil
@@ -199,8 +193,6 @@ func (t *rulesTab) toggleSelected() {
 	if r == nil {
 		return
 	}
-	// Carrega versão fresca para evitar perder filhos no Update (Update do
-	// repo apaga e reinsere extractions/conditions/actions/rule_watches).
 	fresh, err := t.ruleSvc.GetByID(r.ID)
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("%s", uic.HumanizeError(err)), t.parent)
@@ -236,15 +228,81 @@ func (t *rulesTab) removeSelected() {
 	}, t.parent)
 }
 
+// scanSelected dispara ScanRule na regra selecionada e mostra progress + resultado.
+func (t *rulesTab) scanSelected() {
+	r := t.currentSelection()
+	if r == nil {
+		return
+	}
+	if !r.Active {
+		// O botão deveria estar desabilitado, mas defesa redundante não custa.
+		dialog.ShowInformation(
+			"Regra desativada",
+			"Ative a regra antes de aplicá-la aos PDFs já existentes.",
+			t.parent,
+		)
+		return
+	}
+
+	progress := dialog.NewCustomWithoutButtons(
+		"Aplicando regra",
+		container.NewVBox(
+			widget.NewLabel(fmt.Sprintf("Aplicando \"%s\" aos PDFs nas pastas associadas...", r.Name)),
+			widget.NewProgressBarInfinite(),
+		),
+		t.parent,
+	)
+	progress.Show()
+
+	go func() {
+		count, err := t.scanSvc.ScanRule(r.ID)
+
+		// Volta pra UI thread via fyne.Do não está disponível em 2.7.x;
+		// dialogs do Fyne podem ser mostrados de qualquer goroutine pois
+		// internamente o framework empurra as ações pra main thread.
+		// Mas refresh de widgets é mais seguro deixar para callbacks.
+		progress.Hide()
+
+		if err != nil {
+			if errors.Is(err, service.ErrInactive) {
+				dialog.ShowInformation("Regra desativada",
+					"A regra foi desativada antes do scan terminar.", t.parent)
+				return
+			}
+			dialog.ShowError(fmt.Errorf("Falha ao aplicar regra: %s",
+				uic.HumanizeError(err)), t.parent)
+			return
+		}
+
+		dialog.ShowInformation(
+			"Regra aplicada",
+			fmt.Sprintf("\"%s\" foi avaliada em %d documento(s).\n\nVeja a aba Histórico para detalhes.",
+				r.Name, count),
+			t.parent,
+		)
+		if t.onScanDone != nil {
+			t.onScanDone(count)
+		}
+	}()
+}
+
 func (t *rulesTab) refreshButtons() {
-	hasSel := t.selected >= 0
+	r := t.currentSelection()
+	hasSel := r != nil
 	if hasSel {
 		t.editBtn.Enable()
 		t.toggleBtn.Enable()
 		t.removeBtn.Enable()
+		// Scan só faz sentido em regra ativa
+		if r.Active {
+			t.scanBtn.Enable()
+		} else {
+			t.scanBtn.Disable()
+		}
 	} else {
 		t.editBtn.Disable()
 		t.toggleBtn.Disable()
+		t.scanBtn.Disable()
 		t.removeBtn.Disable()
 	}
 }
@@ -259,8 +317,7 @@ func (t *rulesTab) toggleEmptyState() {
 	}
 }
 
-// formatRuleSubtitle gera uma linha resumo da regra para a lista.
-// Exemplo: "Prioridade 10 · ativa · 1 pasta · 2 extrações · 1 condição · 2 ações"
+// formatRuleSubtitle gera o subtítulo da regra na lista.
 func formatRuleSubtitle(r *domain.Rule) string {
 	parts := []string{
 		fmt.Sprintf("Prioridade %d", r.Priority),
@@ -286,7 +343,6 @@ func formatRuleSubtitle(r *domain.Rule) string {
 	return out
 }
 
-// pluralPT é um helper minúsculo pra "1 ação" / "2 ações" sem dependência externa.
 func pluralPT(n int, singular, plural string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, singular)

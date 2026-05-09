@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/F3rreir4L19/juridico-watcher/internal/domain"
 	"github.com/F3rreir4L19/juridico-watcher/internal/storage"
@@ -85,7 +86,6 @@ func TestProcessedRepo_ListRecent_OrdenadosPorData(t *testing.T) {
 	// O último inserido deve vir primeiro
 	assert.Equal(t, "h2", list[0].FileHash)
 }
-
 
 func TestProcessedRepo_ListRecentWithRuleNames_TrazNomeDaRegra(t *testing.T) {
 	pr, rule := setupProcessedTest(t)

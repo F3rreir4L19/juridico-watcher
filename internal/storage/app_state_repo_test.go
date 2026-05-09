@@ -50,4 +50,4 @@ func TestAppStateRepo_SetGetTime_RoundTrip(t *testing.T) {
 	got, err := repo.GetTime("k")
 	require.NoError(t, err)
 	assert.True(t, now.Equal(got), "esperado %v, recebeu %v", now, got)
-}s
+}
