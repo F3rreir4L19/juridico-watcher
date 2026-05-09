@@ -20,6 +20,7 @@ type App struct {
 	logger  *slog.Logger
 
 	watchSvc *service.WatchService
+	ruleSvc  *service.RuleService
 	monitor  *service.MonitorService
 }
 
@@ -38,6 +39,7 @@ func NewApp(db *sql.DB, logger *slog.Logger) *App {
 	wrepo := storage.NewWatchRepo(db)
 	rrepo := storage.NewRuleRepo(db)
 	a.watchSvc = service.NewWatchService(wrepo, rrepo)
+	a.ruleSvc = service.NewRuleService(rrepo)
 	a.monitor = service.NewMonitorService(db, logger)
 
 	a.window = a.fyneApp.NewWindow("Juridico Watcher")
@@ -47,9 +49,12 @@ func NewApp(db *sql.DB, logger *slog.Logger) *App {
 	// Aba Monitorar — reinicia o monitor service quando watches mudam (D-09)
 	watchesTab := newWatchesTab(a.window, a.watchSvc, a.restartMonitor)
 
+	// Aba Regras — também reinicia o monitor quando regras mudam (D-09)
+	rulesTab := newRulesTab(a.window, a.ruleSvc, a.watchSvc, a.restartMonitor)
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Monitorar", watchesTab.Root()),
-		container.NewTabItem("Regras", newRulesPlaceholder()),
+		container.NewTabItem("Regras", rulesTab.Root()),
 	)
 	tabs.SetTabLocation(container.TabLocationTop)
 

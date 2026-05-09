@@ -443,12 +443,12 @@ make clean             # remove bin/
 | 6.5 | Correções pós-revisão: case-insensitive em condições (RN-13), dedup por hash em runtime, interpolator single-pass, fix recursive watch em subpastas novas, mover monitor_service_test para integração, limpeza de dead code | ✅ Completo |
 | 7 | Testes de integração E2E: watch_lifecycle, rule_lifecycle, watch_runtime, scan_service, e2e (cenário procuração completo) | ✅ Completo |
 | 8 | UI Fyne — janela principal, aba Monitorar funcional (CRUD com seleção, validação, picker de pasta), MonitorService no startup, placeholder honesto na aba Regras | ✅ Completo |
+| 9 | UI Fyne — aba Regras completa: dialog modal único com acordeon de extrações/condições/ações, sub-dialogs para cada item composto, validação em camadas (UI + service), avisos quando variável removida está em uso | ✅ Completo |
 
 ### 🔲 Pendente
 
 | Sprint | Descrição | Prioridade |
 |--------|-----------|------------|
-| 9 | **UI Fyne — aba Regras:** lista de regras, dialog completo com extrações/condições/ações | Alta |
 | 10 | **UI — Finalização:** botão Atualizar, histórico, polimento, build cross-platform | Alta |
 
 ### Evidência de estado (último `make test-unit` confirmado):
@@ -548,6 +548,14 @@ O MVP **não precisa ter:**
 ### D-11: Erros traduzidos em humanizeError
 **Razão:** Mensagens como "entrada inválida" ou "constraint failed" são inúteis para o usuário final. internal/ui/components/errors.go mapeia ErrNotFound, ErrDuplicateName, ErrWatchInUse, ErrInvalidInput em mensagens amigáveis em português. Erros desconhecidos têm a mensagem do Go limpa (último wrap removido).
 
+### D-12: Dialog modal único com acordeon para criar/editar regras
+**Razão:** Atomicidade do agregado Rule. RuleRepo.Update apaga e reinsere todos os filhos numa transação; espelhar isso na UI mantém o modelo mental coerente. Cancelar o dialog = nada vai pro banco. Salvar = tudo vai junto. Coerente com o padrão da aba Monitorar.
+
+### D-13: Sub-dialogs para extrações, condições e ações
+**Razão:** Cada item composto tem campos diferentes (extração: 3 strings; condição: variável + operador + valor; ação: tipo polimórfico + target). Inline edit em widget.List ficaria confuso, especialmente para o select de tipo de ação que muda os placeholders/hints. Sub-dialog dedicado dá foco e validação clara. Não-fechar-sub-dialog é descartar a edição daquele item.
+
+### D-14: Feature "caminho entre aspas vira watch automático" adiada para v2
+**Razão:** No briefing original, o usuário podia colar texto com caminhos entre aspas e o sistema criava watches automaticamente (path01, path02). Para o MVP, adicionar pasta uma a uma via picker é suficiente e mais didático para usuário leigo. A complexidade da feature (parser robusto, naming sequencial, edge cases de overlap entre paths) não se justifica no escopo atual. Registrada como feature explícita de v2.
 ---
 
 ## 14. GUIA PARA MODELOS DE IA TRABALHANDO NESTE PROJETO
@@ -605,6 +613,7 @@ Os arquivos `test/integration/e2e_test.go`, `rule_lifecycle_test.go`, `watch_lif
 | 2026-05-08 | Sprint 6.5 — correções pós-revisão completas. Adicionada RN-13 (condições case-insensitive). Pipeline agora consulta dedup antes de processar (RN-11 enforced em runtime, não só no banco). Pipeline usa caminho real retornado de `executeActions` em vez de simulação. Watcher detecta subpastas novas em modo recursivo. Interpolator faz single-pass independente da ordem do map. Teste de MonitorService movido para `test/integration/` por ser end-to-end. Stubs de integração unificados em `package integration_test`. |
 | 2026-05-08 | Sprint 7 — testes de integração E2E completos. Cinco arquivos em `test/integration/` cobrem: ciclo de vida de watch (CRUD + RN-08 ErrWatchInUse), ciclo de vida de regra (CRUD com filhos + cascata + execução real), runtime do watcher (arquivo novo, não-PDF, subpasta recursiva, regra inativa), scan manual (ScanService com pasta única e recursiva), e o teste-âncora E2E que reproduz o cenário do briefing original (pasta digitalizadoras + regra procuração + scan inicial + monitor em runtime). Total: 16 testes de integração novos. |
 | 2026-05-09 | Sprint 8 — UI Fyne aba Monitorar completa. Janela principal 1024×720 abre com duas abas. Aba "Monitorar" tem CRUD completo de pastas com seleção explícita (botões habilitam/desabilitam conforme seleção), picker nativo de pasta, validação de existência do diretório, mensagens de erro amigáveis (HumanizeError), confirmação de remoção, empty state. MonitorService inicia automaticamente ao abrir e reinicia após qualquer mudança. Aba "Regras" tem placeholder explícito remetendo à Sprint 9. Decisões D-07 a D-11 registradas. |
+| 2026-05-09 | Sprint 9 — UI Fyne aba Regras completa. Dialog modal único (D-12) com metadados (nome, prioridade, ativa, pastas em grade de checkboxes) + acordeon com 3 seções: Extrações, Condições, Ações. Sub-dialogs dedicados para cada item composto (D-13), com helpers de operador/tipo de ação em português. Cache local + commit explícito (D-10): nada vai pro banco até "Salvar" no dialog principal. Validação em camadas: sub-dialogs validam campos próprios, commit() valida UX (>= 1 watch, >= 1 ação), service.Create/Update valida domínio (nome, watches). Aviso quando remover extração em uso por condição/ação. MonitorService reinicia após qualquer mudança em regras. Feature "caminho entre aspas" formalmente adiada para v2 (D-14). |
 
 ---
 
