@@ -23,12 +23,12 @@ const (
 
 // Extraction define como capturar uma variável a partir do texto do documento.
 type Extraction struct {
-	ID            int64
-	RuleID        int64
-	VariableName  string // nome da variável, ex: "nome", "tipo"
-	StartDelim    string // delimitador de início (vazio = começo do texto)
-	EndDelim      string // delimitador de fim (vazio = fim do texto)
-	Order         int    // ordem de aplicação (irrelevante para correção mas bom para UI)
+	ID           int64
+	RuleID       int64
+	VariableName string // nome da variável, ex: "nome", "tipo"
+	StartDelim   string // delimitador de início (vazio = começo do texto)
+	EndDelim     string // delimitador de fim (vazio = fim do texto)
+	Order        int    // ordem de aplicação (irrelevante para correção mas bom para UI)
 }
 
 // Condition define uma comparação que precisa ser verdadeira para a regra disparar.
@@ -56,14 +56,14 @@ type Action struct {
 
 // Rule é a entidade principal: combina pastas-alvo, extrações, condições e ações.
 type Rule struct {
-	ID         int64
-	Name       string
-	Priority   int           // menor = roda primeiro (decisão D-b)
-	Active     bool
-	WatchIDs   []int64       // IDs de Watches onde esta regra se aplica
+	ID          int64
+	Name        string
+	Priority    int // menor = roda primeiro (decisão D-b)
+	Active      bool
+	WatchIDs    []int64 // IDs de Watches onde esta regra se aplica
 	Extractions []Extraction
 	Conditions  []Condition
 	Actions     []Action
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }

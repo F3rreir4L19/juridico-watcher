@@ -442,13 +442,12 @@ make clean             # remove bin/
 | 6 | Camada de Services: MonitorService, WatchService, RuleService, ScanService + testes | ✅ Completo |
 | 6.5 | Correções pós-revisão: case-insensitive em condições (RN-13), dedup por hash em runtime, interpolator single-pass, fix recursive watch em subpastas novas, mover monitor_service_test para integração, limpeza de dead code | ✅ Completo |
 | 7 | Testes de integração E2E: watch_lifecycle, rule_lifecycle, watch_runtime, scan_service, e2e (cenário procuração completo) | ✅ Completo |
+| 8 | UI Fyne — janela principal, aba Monitorar funcional (CRUD com seleção, validação, picker de pasta), MonitorService no startup, placeholder honesto na aba Regras | ✅ Completo |
 
 ### 🔲 Pendente
 
 | Sprint | Descrição | Prioridade |
 |--------|-----------|------------|
-| 7 | **Teste E2E** com exemplo real de procuração — arquivos em `test/integration/` são stubs vazios | **PRÓXIMO** |
-| 8 | **UI Fyne — aba Monitorar:** lista de watches, botão adicionar, dialog criar/editar, ativar/desativar | Alta |
 | 9 | **UI Fyne — aba Regras:** lista de regras, dialog completo com extrações/condições/ações | Alta |
 | 10 | **UI — Finalização:** botão Atualizar, histórico, polimento, build cross-platform | Alta |
 
@@ -534,6 +533,21 @@ O MVP **não precisa ter:**
 ### D-06: Fyne como framework GUI
 **Razão:** Avaliamos opções (webview, walk, Qt bindings). Fyne é o único que oferece binário único + visual aceitável + suporte a Windows e Linux sem dependências de runtime. O custo (CGO obrigatório) é aceitável dado o benefício.
 
+### D-07: Lista com nome em destaque + subtítulo em cinza
+**Razão:** Comunica hierarquia visual melhor que ícones simples (✓/✗) e é amigável para usuários não-técnicos. Implementado via widget custom em `internal/ui/components/list_item.go` (TwoLineItem). Reutilizado pela aba Regras na Sprint 9.
+
+### D-08: Seleção explícita por clique
+**Razão:** Botões de ação operam SEMPRE no item selecionado, nunca em watches[0] / rules[0] como um stub poderia fazer. Botões ficam desabilitados quando nada está selecionado, eliminando ambiguidade. Esta decisão é não-negociável: nunca retornar a um modelo onde a UI age "no primeiro item" sem seleção explícita.
+
+### D-09: MonitorService inicia automaticamente no startup
+**Razão:** Para o advogado-leigo, "abrir o programa" significa "ativar o monitoramento". Ter um botão extra "Iniciar Monitoramento" gera confusão ("por que está desligado?"). Trade-off aceito: o programa precisa estar aberto para monitorar. System tray (rodar em background) é v2.
+
+### D-10: Cache local em estruturas de aba, recarga explícita via reload()
+**Razão:** Os callbacks do widget.List do Fyne (length e update) são chamados muitas vezes durante render. Fazer Service.List() neles cria N+1 queries no SQLite. Cada aba (watchesTab, rulesTab futura) mantém um slice local atualizado por reload(), e os callbacks só leem dele.
+
+### D-11: Erros traduzidos em humanizeError
+**Razão:** Mensagens como "entrada inválida" ou "constraint failed" são inúteis para o usuário final. internal/ui/components/errors.go mapeia ErrNotFound, ErrDuplicateName, ErrWatchInUse, ErrInvalidInput em mensagens amigáveis em português. Erros desconhecidos têm a mensagem do Go limpa (último wrap removido).
+
 ---
 
 ## 14. GUIA PARA MODELOS DE IA TRABALHANDO NESTE PROJETO
@@ -590,6 +604,7 @@ Os arquivos `test/integration/e2e_test.go`, `rule_lifecycle_test.go`, `watch_lif
 | 2026-05-07 | Criação inicial do CLAUDE.md, consolidando docs/resumo juridico watcher.txt e decisões das conversas de desenvolvimento. Estado: Sprint 6 completo, Sprints 7-10 pendentes. |
 | 2026-05-08 | Sprint 6.5 — correções pós-revisão completas. Adicionada RN-13 (condições case-insensitive). Pipeline agora consulta dedup antes de processar (RN-11 enforced em runtime, não só no banco). Pipeline usa caminho real retornado de `executeActions` em vez de simulação. Watcher detecta subpastas novas em modo recursivo. Interpolator faz single-pass independente da ordem do map. Teste de MonitorService movido para `test/integration/` por ser end-to-end. Stubs de integração unificados em `package integration_test`. |
 | 2026-05-08 | Sprint 7 — testes de integração E2E completos. Cinco arquivos em `test/integration/` cobrem: ciclo de vida de watch (CRUD + RN-08 ErrWatchInUse), ciclo de vida de regra (CRUD com filhos + cascata + execução real), runtime do watcher (arquivo novo, não-PDF, subpasta recursiva, regra inativa), scan manual (ScanService com pasta única e recursiva), e o teste-âncora E2E que reproduz o cenário do briefing original (pasta digitalizadoras + regra procuração + scan inicial + monitor em runtime). Total: 16 testes de integração novos. |
+| 2026-05-09 | Sprint 8 — UI Fyne aba Monitorar completa. Janela principal 1024×720 abre com duas abas. Aba "Monitorar" tem CRUD completo de pastas com seleção explícita (botões habilitam/desabilitam conforme seleção), picker nativo de pasta, validação de existência do diretório, mensagens de erro amigáveis (HumanizeError), confirmação de remoção, empty state. MonitorService inicia automaticamente ao abrir e reinicia após qualquer mudança. Aba "Regras" tem placeholder explícito remetendo à Sprint 9. Decisões D-07 a D-11 registradas. |
 
 ---
 

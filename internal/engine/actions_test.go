@@ -35,7 +35,7 @@ func TestExecuteMoveFile_SemColisao(t *testing.T) {
 	require.NoError(t, err)
 	assert.FileExists(t, newPath)
 	assert.True(t, filepath.Dir(newPath) == destBase) // verifica se está no destino
-	assert.False(t, fileExists(filePath)) // original não existe mais
+	assert.False(t, fileExists(filePath))             // original não existe mais
 }
 
 func TestExecuteMoveFile_Colisao(t *testing.T) {

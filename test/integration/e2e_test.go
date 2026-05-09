@@ -16,12 +16,12 @@ import (
 
 // TestE2E_FluxoCompletoProcuracao replica o cenário do briefing original:
 //
-//   1. Usuário define pasta "digitalizadoras" como monitorada
-//   2. Cria regra "procuracao" com extrações (nome, tipo) e ações
-//      (create_folder, move, rename)
-//   3. Documentos preexistentes são processados via ScanService
-//   4. Novos documentos chegando ativam o pipeline via MonitorService
-//   5. Documentos com tipo != "procuracao" são ignorados (no_match)
+//  1. Usuário define pasta "digitalizadoras" como monitorada
+//  2. Cria regra "procuracao" com extrações (nome, tipo) e ações
+//     (create_folder, move, rename)
+//  3. Documentos preexistentes são processados via ScanService
+//  4. Novos documentos chegando ativam o pipeline via MonitorService
+//  5. Documentos com tipo != "procuracao" são ignorados (no_match)
 //
 // Este é o teste-âncora: se ele passar, o sistema funciona end-to-end
 // para o uso real.
