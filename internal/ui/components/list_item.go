@@ -1,13 +1,13 @@
 package components
 
 import (
+	"image/color"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-
-	"image/color"
 )
 
 // TwoLineItem é um widget de lista com título em destaque e subtítulo em cinza.
@@ -34,6 +34,7 @@ func NewTwoLineItem() *TwoLineItem {
 }
 
 // Update preenche título, subtítulo e estado de ativo/inativo.
+// Cor do título é foreground (ativo) ou disabled (inativo).
 func (i *TwoLineItem) Update(title, subtitle string, active bool) {
 	i.title.Text = title
 	i.subtitle.Text = subtitle
@@ -46,6 +47,17 @@ func (i *TwoLineItem) Update(title, subtitle string, active bool) {
 	i.subtitle.Refresh()
 }
 
+// UpdateWithColor é como Update mas permite definir a cor do título
+// arbitrariamente. Usado pela aba Histórico para destacar status com cor
+// (ex: vermelho para falha, laranja para no_text).
+func (i *TwoLineItem) UpdateWithColor(title, subtitle string, titleColor color.Color) {
+	i.title.Text = title
+	i.subtitle.Text = subtitle
+	i.title.Color = titleColor
+	i.title.Refresh()
+	i.subtitle.Refresh()
+}
+
 // CreateRenderer satisfaz a interface fyne.Widget.
 func (i *TwoLineItem) CreateRenderer() fyne.WidgetRenderer {
 	box := container.NewVBox(i.title, i.subtitle)
@@ -54,4 +66,3 @@ func (i *TwoLineItem) CreateRenderer() fyne.WidgetRenderer {
 
 // Compile-time check
 var _ fyne.Widget = (*TwoLineItem)(nil)
-var _ color.Color = color.Black // só pra evitar lint do import unused se canvas mudar

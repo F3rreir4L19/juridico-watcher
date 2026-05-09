@@ -85,3 +85,44 @@ func TestProcessedRepo_ListRecent_OrdenadosPorData(t *testing.T) {
 	// O último inserido deve vir primeiro
 	assert.Equal(t, "h2", list[0].FileHash)
 }
+
+
+func TestProcessedRepo_ListRecentWithRuleNames_TrazNomeDaRegra(t *testing.T) {
+	pr, rule := setupProcessedTest(t)
+	require.NoError(t, pr.Record(&domain.ProcessedDoc{
+		FileHash: "h1", OriginalPath: "/a.pdf", RuleID: rule.ID,
+		Status: domain.StatusSuccess,
+	}))
+
+	items, err := pr.ListRecentWithRuleNames(10)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "r", items[0].RuleName)
+	assert.Equal(t, domain.StatusSuccess, items[0].Status)
+}
+
+func TestProcessedRepo_CountFailuresAfter(t *testing.T) {
+	pr, rule := setupProcessedTest(t)
+
+	longAgo := time.Now().UTC().Add(-1 * time.Hour)
+
+	// 2 falhas + 1 sucesso, todas agora
+	require.NoError(t, pr.Record(&domain.ProcessedDoc{
+		FileHash: "h1", OriginalPath: "/a", RuleID: rule.ID, Status: domain.StatusFailed,
+	}))
+	require.NoError(t, pr.Record(&domain.ProcessedDoc{
+		FileHash: "h2", OriginalPath: "/b", RuleID: rule.ID, Status: domain.StatusFailed,
+	}))
+	require.NoError(t, pr.Record(&domain.ProcessedDoc{
+		FileHash: "h3", OriginalPath: "/c", RuleID: rule.ID, Status: domain.StatusSuccess,
+	}))
+
+	count, err := pr.CountFailuresAfter(longAgo)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+
+	// "Desde agora" → ainda viu zero (as falhas são <= now())
+	count, err = pr.CountFailuresAfter(time.Now().UTC().Add(1 * time.Second))
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}

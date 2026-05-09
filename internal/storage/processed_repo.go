@@ -101,3 +101,59 @@ func (r *ProcessedRepo) ListRecent(limit int) ([]*domain.ProcessedDoc, error) {
 	}
 	return out, rows.Err()
 }
+
+
+// HistoryItem combina um ProcessedDoc com o nome da regra associada.
+// Usado pela aba Histórico para evitar query N+1 na UI.
+type HistoryItem struct {
+	*domain.ProcessedDoc
+	RuleName string
+}
+
+// ListRecentWithRuleNames retorna os processamentos mais recentes já com o
+// nome da regra anexado. Faz LEFT JOIN porque a regra pode ter sido deletada;
+// neste caso RuleName fica vazio (cascade já apagaria o processed, mas
+// defendemos por garantia).
+func (r *ProcessedRepo) ListRecentWithRuleNames(limit int) ([]*HistoryItem, error) {
+	rows, err := r.db.Query(`
+		SELECT p.id, p.file_hash, p.original_path, p.rule_id, p.status, p.error_msg, p.processed_at,
+		       COALESCE(rules.name, '') AS rule_name
+		FROM processed_documents p
+		LEFT JOIN rules ON rules.id = p.rule_id
+		ORDER BY p.processed_at DESC, p.id DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("listar histórico: %w", err)
+	}
+	defer rows.Close()
+
+	var out []*HistoryItem
+	for rows.Next() {
+		var p domain.ProcessedDoc
+		var status, ruleName string
+		if err := rows.Scan(&p.ID, &p.FileHash, &p.OriginalPath, &p.RuleID, &status,
+			&p.ErrorMsg, &p.ProcessedAt, &ruleName); err != nil {
+			return nil, err
+		}
+		p.Status = domain.ProcessingStatus(status)
+		out = append(out, &HistoryItem{ProcessedDoc: &p, RuleName: ruleName})
+	}
+	return out, rows.Err()
+}
+
+// CountFailuresAfter conta processamentos com status=failed criados após
+// o timestamp informado. Usado para o indicador de "(N falhas)" no título
+// da aba Histórico.
+func (r *ProcessedRepo) CountFailuresAfter(since time.Time) (int, error) {
+	var count int
+	err := r.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM processed_documents
+		WHERE status = ? AND processed_at > ?
+	`, string(domain.StatusFailed), since).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("contar falhas: %w", err)
+	}
+	return count, nil
+}
